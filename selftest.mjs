@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import * as F from './filters.js';
+import { validate } from './challenge.js';
+import { SCENARIOS } from './scenarios.js';
 
 const names = Array.from({ length: 60 }, (_, i) => `user_${i}`);
 
@@ -47,5 +49,15 @@ assert.equal(F.cuckooDelete(c, victim).ok, true);
 assert.equal(c.added.has(victim), false);
 assert.equal(F.cuckooDelete(c, 'never_added_name').reason, 'never-added');
 for (const s of stored.filter(s => s !== victim)) assert.equal(F.cuckooCheck(c, s).result, 'maybe');
+
+// Sizing: textbook case and the video's numbers.
+const t = F.bloomSize(1e6, 0.01);
+assert.ok(Math.abs(t.bits - 9.585e6) < 1e4 && t.k === 7, 'n=1e6, p=1% → ~9.59M bits, k=7');
+const demo = F.bloomSize(3023103, 1e-4);
+assert.ok(demo.bytes > 7.0e6 && demo.bytes < 7.5e6 && demo.k === 13, 'video demo ≈ 7.2–7.5 MB, 13 hashes');
+assert.ok(Math.abs(F.bloomSize(3e9, 1e-4).bytes / 1e9 - 7.2) < 0.05, '300 crore ≈ 7.2 GB');
+
+// Challenges data is valid.
+assert.deepEqual(validate(SCENARIOS), []);
 
 console.log(`selftest ok: bloom fp example "${fp}", cuckoo stored ${stored.length}/${F.CUCKOO_BUCKETS * F.CUCKOO_SLOTS}`);

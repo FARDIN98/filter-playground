@@ -31,17 +31,25 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -app
 main { max-width: 760px; margin: 0 auto; padding: 14px 16px 18px; }
 h1 { font-size: 18px; margin: 0 0 2px; }
 .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-.tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .tab { border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; }
 .tab[aria-selected="true"].t-bloom { background: var(--bloom); border-color: var(--bloom); color: #fff; }
 .tab[aria-selected="true"].t-cuckoo { background: var(--cuckoo); border-color: var(--cuckoo); color: #fff; }
+.tab[aria-selected="true"].t-ink { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.est { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 12px; margin-bottom: 10px; }
+.est label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+.est input, .est select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; width: 100%; }
+.steps { margin: 0 0 8px; padding-left: 20px; font-size: 14px; }
+.steps li { margin: 3px 0; }
+.big { font: 700 22px ui-monospace, Menlo, monospace; }
+.note { color: var(--muted); font-size: 12.5px; margin: 4px 0 8px; }
 .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
 input[type=text] { flex: 1 1 160px; min-width: 0; font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
 button.act { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
 button.act.primary { font-weight: 600; }
 #bloom button.act.primary { border-color: var(--bloom); }
 #cuckoo button.act.primary { border-color: var(--cuckoo); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .banner { padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--line); background: var(--surface); min-height: 40px; }
 .banner.good { background: var(--good-bg); border-color: var(--good); }
 .banner.warn { background: var(--warn-bg); border-color: var(--warn); }
@@ -85,6 +93,8 @@ ol.log li { margin: 1px 0; }
   <div class="tabs" role="tablist">
     <button class="tab t-bloom" role="tab" id="tab-bloom" aria-controls="bloom" aria-selected="true">Bloom filter</button>
     <button class="tab t-cuckoo" role="tab" id="tab-cuckoo" aria-controls="cuckoo" aria-selected="false">Cuckoo filter</button>
+    <button class="tab t-ink" role="tab" id="tab-pick" aria-controls="pick" aria-selected="false">🎯 Pick the filter</button>
+    <button class="tab t-ink" role="tab" id="tab-size" aria-controls="size" aria-selected="false">🧮 Size it</button>
   </div>
 
   <section id="bloom" role="tabpanel" aria-labelledby="tab-bloom">
@@ -117,12 +127,33 @@ ol.log li { margin: 1px 0; }
     <div class="meta" id="c-meta"></div>
   </section>
 
-  <p class="try">Try: <b>Bloom</b> → add 3 names, check a new one, then “Show me a false positive” and “Delete?”. <b>Cuckoo</b> → “Fill it up” to watch kick-outs, then delete a name.
+  <section id="pick" role="tabpanel" aria-labelledby="tab-pick" hidden></section>
+
+  <section id="size" role="tabpanel" aria-labelledby="tab-size" hidden>
+    <p class="note" style="margin-top:0">How much RAM does a Bloom filter need? Change the numbers, or load the video’s.</p>
+    <div class="row">
+      <button class="act" type="button" data-preset="demo">Video demo: 30 lakh names</button>
+      <button class="act" type="button" data-preset="big">300 crore, 4 workers</button>
+    </div>
+    <div class="est">
+      <label>Items (n) <input type="number" id="z-n" min="1" value="3023103"></label>
+      <label>False-positive rate (p)
+        <select id="z-p"><option value="0.01">1%</option><option value="0.001">0.1%</option><option value="0.0001" selected>0.01%</option><option value="0.00001">0.001%</option></select></label>
+      <label>Copies (one per worker) <input type="number" id="z-w" min="1" value="1"></label>
+    </div>
+    <div class="banner" id="z-out" role="status" aria-live="polite"></div>
+    <ol class="steps" id="z-steps"></ol>
+    <p class="note" id="z-video"></p>
+  </section>
+
+  <p class="try">Try: <b>Bloom</b> → add 3 names, check a new one, then “Show me a false positive” and “Delete?”. <b>Cuckoo</b> → “Fill it up” to watch kick-outs, then delete a name. <b>Pick the filter</b> → 10 interview-style situations. <b>Size it</b> → RAM for n names.
   From EP-4 of Ankit Jain’s System Design series · <a href="https://www.youtube.com/watch?v=B8hMPCM7i8w" target="_blank" rel="noopener">watch the video</a></p>
 </main>
 
 <script type="module">
 import * as F from './filters.js';
+import { mount, CSS } from './challenge.js';
+import { SCENARIOS } from './scenarios.js';
 
 const PRESETS = ['ankit', 'priya', 'rahul_99', 'neha', 'arjun', 'sara', 'vikram', 'meera', 'kabir', 'isha', 'dev', 'tara', 'rohan', 'anya', 'zoya', 'aman', 'riya', 'yash', 'nisha', 'omar'];
 const CANDIDATES = [...PRESETS, ...Array.from({ length: 400 }, (_, i) => `user_${i}`), ...PRESETS.map(p => p + '_1')];
@@ -254,6 +285,38 @@ function cuckooOp(op) {
   }
 }
 cuckooDraw();
+
+// ---------- pick the filter ----------
+document.head.insertAdjacentHTML('beforeend', `<style>${CSS}</style>`);
+mount(document.getElementById('pick'), SCENARIOS);
+
+// ---------- size it ----------
+const $z = id => document.getElementById(id);
+const num = n => Math.round(n).toLocaleString('en-IN');
+const bytes = b => b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(2)} MB` : `${(b / 1e3).toFixed(1)} KB`;
+const VIDEO = {
+  demo: { n: 3023103, p: '0.0001', w: 1, note: 'Video: 3,023,103 usernames → about <b>7.5 MB</b> with 13 hash functions. The formula gives a little less; a real library adds some overhead.' },
+  big: { n: 3000000000, p: '0.0001', w: 4, note: 'Video: 300 crore → Bloom about <b>7.2 GB</b>, and 4 workers × 7.2 GB ≈ <b>29 GB</b> per machine. That’s why Cuckoo’s one shared mmap file helped.' },
+};
+let preset = 'demo';
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+  const v = VIDEO[preset = b.dataset.preset];
+  $z('z-n').value = v.n; $z('z-p').value = v.p; $z('z-w').value = v.w; sizeDraw();
+}));
+['z-n', 'z-p', 'z-w'].forEach(id => $z(id).addEventListener('input', () => { preset = null; sizeDraw(); }));
+function sizeDraw() {
+  const n = Math.max(1, +$z('z-n').value || 1), p = +$z('z-p').value, w = Math.max(1, Math.round(+$z('z-w').value || 1));
+  const s = F.bloomSize(n, p);
+  say($z('z-out'), 'good', `<span class="big">${bytes(s.bytes)}</span> per copy · <b>${s.k}</b> hash functions${w > 1 ? ` · <b>${bytes(s.bytes * w)}</b> for ${w} copies` : ''}`);
+  $z('z-steps').innerHTML = [
+    `Bits per item = 1.44 × log₂(1/p) = <b>${s.bitsPerItem.toFixed(1)}</b> (≈ ${(s.bitsPerItem / 8).toFixed(1)} bytes)`,
+    `× ${num(n)} items = <b>${num(s.bits)}</b> bits ÷ 8 = <b>${bytes(s.bytes)}</b>`,
+    `Hash functions k = bits per item × 0.69 ≈ <b>${s.k}</b>`,
+    ...(w > 1 ? [`× ${w} copies (one per worker) = <b>${bytes(s.bytes * w)}</b>`] : []),
+  ].map(x => `<li>${x}</li>`).join('');
+  $z('z-video').innerHTML = preset ? VIDEO[preset].note : 'Halving p adds about 1.44 bits per item. Fewer false positives always costs RAM.';
+}
+sizeDraw();
 </script>
 </body>
 </html>

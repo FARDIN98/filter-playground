@@ -162,3 +162,10 @@ export function cuckooDelete(c, name) {
 export function cuckooCount(c) {
   return c.table.reduce((s, b) => s + b.filter(Boolean).length, 0);
 }
+
+// ---------- sizing ----------
+// Standard Bloom sizing: m = −n·ln p / (ln 2)², k = (m/n)·ln 2. (Same formula as system-design-playground/lib.js.)
+export function bloomSize(n, p) {
+  const bits = Math.ceil((-n * Math.log(p)) / (Math.LN2 * Math.LN2));
+  return { bits, bytes: bits / 8, k: Math.max(1, Math.round((bits / n) * Math.LN2)), bitsPerItem: bits / n };
+}
