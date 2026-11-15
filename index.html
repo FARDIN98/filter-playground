@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filter Playground</title>
+<meta name="description" content="Add, check and delete names in a tiny Bloom filter and Cuckoo filter, and watch the bits and buckets change.">
+<style>
+:root {
+  --bg: #ffffff; --surface: #f6f6f3; --ink: #1d1d1b; --muted: #6b6a63; --line: #deddd6;
+  --bloom: #2a78d6; --bloom-soft: #dbe8f8; --cuckoo: #1baf7a; --cuckoo-soft: #d6f2e7;
+  --good: #0a7d34; --good-bg: #e3f4e8; --warn: #9a6300; --warn-bg: #fdf1d8; --bad: #c62828; --bad-bg: #fbe4e4;
+  --focus: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #191919; --surface: #242423; --ink: #ededea; --muted: #a3a29b; --line: #3a3a37;
+    --bloom: #5c9df0; --bloom-soft: #1d3350; --cuckoo: #3cc893; --cuckoo-soft: #173b2e;
+    --good: #5fd08a; --good-bg: #16301f; --warn: #f0b545; --warn-bg: #3a2c10; --bad: #f07a7a; --bad-bg: #3d1a1a;
+    --focus: #5c9df0;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #191919; --surface: #242423; --ink: #ededea; --muted: #a3a29b; --line: #3a3a37;
+  --bloom: #5c9df0; --bloom-soft: #1d3350; --cuckoo: #3cc893; --cuckoo-soft: #173b2e;
+  --good: #5fd08a; --good-bg: #16301f; --warn: #f0b545; --warn-bg: #3a2c10; --bad: #f07a7a; --bad-bg: #3d1a1a;
+  --focus: #5c9df0;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 14px 16px 18px; }
+h1 { font-size: 18px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.tab { border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; }
+.tab[aria-selected="true"].t-bloom { background: var(--bloom); border-color: var(--bloom); color: #fff; }
+.tab[aria-selected="true"].t-cuckoo { background: var(--cuckoo); border-color: var(--cuckoo); color: #fff; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+input[type=text] { flex: 1 1 160px; min-width: 0; font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+button.act { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+button.act.primary { font-weight: 600; }
+#bloom button.act.primary { border-color: var(--bloom); }
+#cuckoo button.act.primary { border-color: var(--cuckoo); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.banner { padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--line); background: var(--surface); min-height: 40px; }
+.banner.good { background: var(--good-bg); border-color: var(--good); }
+.banner.warn { background: var(--warn-bg); border-color: var(--warn); }
+.banner.bad { background: var(--bad-bg); border-color: var(--bad); }
+.banner b.good { color: var(--good); } .banner b.warn { color: var(--warn); } .banner b.bad { color: var(--bad); }
+.bits { display: grid; grid-template-columns: repeat(16, 1fr); gap: 4px; margin-bottom: 8px; }
+.bit { border: 1px solid var(--line); border-radius: 6px; text-align: center; padding: 2px 0 3px; background: var(--bg); transition: background .25s; }
+.bit .i { display: block; font-size: 10px; color: var(--muted); }
+.bit .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.bit.on { background: var(--bloom-soft); border-color: var(--bloom); }
+.bit.hit { box-shadow: 0 0 0 2px var(--bloom); }
+.bit.zero { box-shadow: 0 0 0 2px var(--bad); }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.buckets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; margin-bottom: 8px; }
+.bucket { display: grid; grid-template-columns: 62px 1fr 1fr; gap: 4px; align-items: stretch; border-radius: 8px; padding: 3px; border: 1px solid transparent; }
+.bucket.cand { border-color: var(--cuckoo); background: var(--cuckoo-soft); }
+.bucket .lbl { font-size: 12px; color: var(--muted); align-self: center; }
+.slot { border: 1px dashed var(--line); border-radius: 6px; min-height: 38px; padding: 2px 6px; background: var(--bg); }
+.slot.full { border-style: solid; border-color: var(--cuckoo); }
+.slot.moved { box-shadow: 0 0 0 2px var(--warn); }
+.slot .fp { font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+.slot .nm { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ol.log { margin: 0 0 8px; padding-left: 20px; font-size: 13px; }
+ol.log li { margin: 1px 0; }
+.try { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 6px; }
+.try a { color: var(--focus); }
+[hidden] { display: none !important; }
+@media (max-width: 560px) {
+  .bits { grid-template-columns: repeat(8, 1fr); }
+  .buckets { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Membership filter playground</h1>
+  <p class="sub">Type a name. <b>Add</b> it, then <b>Check</b> names. A filter answers only “definitely NOT” or “maybe”.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab t-bloom" role="tab" id="tab-bloom" aria-controls="bloom" aria-selected="true">Bloom filter</button>
+    <button class="tab t-cuckoo" role="tab" id="tab-cuckoo" aria-controls="cuckoo" aria-selected="false">Cuckoo filter</button>
+  </div>
+
+  <section id="bloom" role="tabpanel" aria-labelledby="tab-bloom">
+    <form class="row" id="b-form">
+      <input type="text" id="b-name" placeholder="e.g. ankit" autocomplete="off" aria-label="Name for the Bloom filter">
+      <button class="act primary" type="submit" data-op="add">Add</button>
+      <button class="act primary" type="button" data-op="check">Check</button>
+      <button class="act" type="button" data-op="delete">Delete?</button>
+      <button class="act" type="button" data-op="fp">Show me a false positive</button>
+      <button class="act" type="button" data-op="reset">Reset</button>
+    </form>
+    <div class="banner" id="b-msg" role="status" aria-live="polite">32 bits, 3 hash functions. Every name lights up 3 bits.</div>
+    <div class="bits" id="b-bits" aria-label="Bit array"></div>
+    <div class="meta" id="b-meta"></div>
+    <div class="chips" id="b-added" aria-label="Names added"></div>
+  </section>
+
+  <section id="cuckoo" role="tabpanel" aria-labelledby="tab-cuckoo" hidden>
+    <form class="row" id="c-form">
+      <input type="text" id="c-name" placeholder="e.g. priya" autocomplete="off" aria-label="Name for the Cuckoo filter">
+      <button class="act primary" type="submit" data-op="add">Add</button>
+      <button class="act primary" type="button" data-op="check">Check</button>
+      <button class="act primary" type="button" data-op="delete">Delete</button>
+      <button class="act" type="button" data-op="fill">Fill it up</button>
+      <button class="act" type="button" data-op="reset">Reset</button>
+    </form>
+    <div class="banner" id="c-msg" role="status" aria-live="polite">8 buckets × 2 slots. Each name stores a small fingerprint, and has exactly 2 buckets it may live in.</div>
+    <div class="buckets" id="c-table" aria-label="Buckets"></div>
+    <ol class="log" id="c-log"></ol>
+    <div class="meta" id="c-meta"></div>
+  </section>
+
+  <p class="try">Try: <b>Bloom</b> → add 3 names, check a new one, then “Show me a false positive” and “Delete?”. <b>Cuckoo</b> → “Fill it up” to watch kick-outs, then delete a name.
+  From EP-4 of Ankit Jain’s System Design series · <a href="https://www.youtube.com/watch?v=B8hMPCM7i8w" target="_blank" rel="noopener">watch the video</a></p>
+</main>
+
+<script type="module">
+import * as F from './filters.js';
+
+const PRESETS = ['ankit', 'priya', 'rahul_99', 'neha', 'arjun', 'sara', 'vikram', 'meera', 'kabir', 'isha', 'dev', 'tara', 'rohan', 'anya', 'zoya', 'aman', 'riya', 'yash', 'nisha', 'omar'];
+const CANDIDATES = [...PRESETS, ...Array.from({ length: 400 }, (_, i) => `user_${i}`), ...PRESETS.map(p => p + '_1')];
+const esc = s => s.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+// ---------- tabs ----------
+const tabs = [...document.querySelectorAll('.tab')];
+function select(tab) {
+  tabs.forEach(t => {
+    const on = t === tab;
+    t.setAttribute('aria-selected', on);
+    document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+  });
+}
+tabs.forEach(t => t.addEventListener('click', () => select(t)));
+document.querySelector('.tabs').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  const next = tabs[(tabs.indexOf(document.activeElement) + 1) % tabs.length];
+  select(next); next.focus();
+});
+
+// ---------- Bloom ----------
+let bloom = F.createBloom();
+const bName = document.getElementById('b-name'), bMsg = document.getElementById('b-msg');
+function bloomDraw(hit = [], zero = []) {
+  document.getElementById('b-bits').innerHTML = bloom.bits.map((v, i) =>
+    `<div class="bit${v ? ' on' : ''}${hit.includes(i) ? ' hit' : ''}${zero.includes(i) ? ' zero' : ''}" title="bit ${i}"><span class="i">${i}</span><span class="v">${v}</span></div>`).join('');
+  const fill = F.bloomFill(bloom);
+  document.getElementById('b-meta').textContent =
+    `${Math.round(fill * 32)} of 32 bits are 1 · chance a new name falsely says “maybe” ≈ ${Math.round(Math.pow(fill, 3) * 100)}%`;
+  document.getElementById('b-added').innerHTML = [...bloom.added].map(n => `<span class="chip">${esc(n)}</span>`).join('');
+}
+function say(el, cls, html) { el.className = 'banner' + (cls ? ' ' + cls : ''); el.innerHTML = html; }
+function owners(pos, except) {
+  return [...bloom.added].filter(n => n !== except && F.bloomPositions(n).includes(pos));
+}
+function bloomCheckShow(name) {
+  const r = F.bloomCheck(bloom, name);
+  if (r.result === 'no') {
+    say(bMsg, 'good', `<b class="good">Definitely NOT.</b> “${esc(name)}” → bits ${r.pos.join(', ')}. ${r.zeros.length > 1 ? 'Bits' : 'Bit'} ${r.zeros.join(', ')} ${r.zeros.length > 1 ? 'are' : 'is'} 0, so it was never added. No DB call needed.`);
+  } else if (r.falsePositive) {
+    const who = [...new Set(r.pos.flatMap(p => owners(p)))];
+    say(bMsg, 'bad', `<b class="bad">False positive!</b> “${esc(name)}” was never added, but its bits ${r.pos.join(', ')} were already set by ${who.map(esc).join(', ')}. The filter says “maybe”, so the DB check catches it.`);
+  } else {
+    say(bMsg, 'warn', `<b class="warn">Maybe.</b> “${esc(name)}” → bits ${r.pos.join(', ')} are all 1. Confirm in the DB (here it really was added).`);
+  }
+  bloomDraw(r.pos, r.zeros);
+}
+document.getElementById('b-form').addEventListener('submit', e => { e.preventDefault(); bloomOp('add'); });
+document.querySelectorAll('#b-form button[type=button]').forEach(btn => btn.addEventListener('click', () => bloomOp(btn.dataset.op)));
+function bloomOp(op) {
+  const name = bName.value.trim().toLowerCase();
+  if (op === 'reset') { bloom = F.createBloom(); say(bMsg, '', 'Empty again. 32 bits, all 0.'); bloomDraw(); return; }
+  if (op === 'fp') {
+    let fp = F.findFalsePositive(bloom, CANDIDATES), added = [];
+    for (const p of PRESETS) {
+      if (fp) break;
+      if (!bloom.added.has(p)) { F.bloomAdd(bloom, p); added.push(p); fp = F.findFalsePositive(bloom, CANDIDATES); }
+    }
+    if (added.length) say(bMsg, '', `Added ${added.map(esc).join(', ')} to fill some bits…`);
+    if (fp) { bName.value = fp; setTimeout(() => bloomCheckShow(fp), added.length ? 700 : 0); }
+    bloomDraw();
+    return;
+  }
+  if (!name) { say(bMsg, '', 'Type a name first.'); bName.focus(); return; }
+  if (op === 'add') {
+    const r = F.bloomAdd(bloom, name);
+    say(bMsg, '', `Added “${esc(name)}” → bits ${r.pos.join(', ')} set to 1${r.newlySet.length < 3 ? ` (${3 - r.newlySet.length} were already 1: shared with other names)` : ''}.`);
+    bloomDraw(r.pos); bName.select();
+  } else if (op === 'check') {
+    bloomCheckShow(name);
+  } else if (op === 'delete') {
+    const pos = F.bloomPositions(name);
+    const shared = pos.map(p => ({ p, who: owners(p, name) })).filter(x => x.who.length);
+    say(bMsg, 'bad', `<b class="bad">Bloom can't delete.</b> Turning bits ${pos.join(', ')} back to 0 would also erase other names` +
+      (shared.length ? `: ${shared.map(x => `bit ${x.p} is shared with ${x.who.map(esc).join(', ')}`).join('; ')}` : ' that share them later') +
+      `. Then the filter would say “definitely NOT” for a name that exists, a false negative. Use Counting Bloom or Cuckoo.`);
+    bloomDraw(pos);
+  }
+}
+bloomDraw();
+
+// ---------- Cuckoo ----------
+let cuckoo = F.createCuckoo();
+const cName = document.getElementById('c-name'), cMsg = document.getElementById('c-msg');
+function cuckooDraw(cand = [], moved = [], steps = []) {
+  document.getElementById('c-table').innerHTML = cuckoo.table.map((b, i) =>
+    `<div class="bucket${cand.includes(i) ? ' cand' : ''}"><span class="lbl">Bucket ${i}</span>` +
+    b.map(e => e
+      ? `<div class="slot full${moved.includes(e.name) ? ' moved' : ''}"><span class="fp">${F.hex(e.fp)}</span><span class="nm">${esc(e.name)}</span></div>`
+      : `<div class="slot"><span class="nm">empty</span></div>`).join('') + '</div>').join('');
+  document.getElementById('c-log').innerHTML = steps.map(s => `<li>${esc(s)}</li>`).join('');
+  document.getElementById('c-meta').textContent = `${F.cuckooCount(cuckoo)} of 16 slots used · orange outline = moved by a kick-out · the name under each fingerprint is only a label (a real filter stores just the fingerprint)`;
+}
+document.getElementById('c-form').addEventListener('submit', e => { e.preventDefault(); cuckooOp('add'); });
+document.querySelectorAll('#c-form button[type=button]').forEach(btn => btn.addEventListener('click', () => cuckooOp(btn.dataset.op)));
+function cuckooAddShow(name) {
+  if (cuckoo.added.has(name)) { say(cMsg, '', `“${esc(name)}” is already in. Try another name.`); return; }
+  const r = F.cuckooAdd(cuckoo, name);
+  if (!r.ok) say(cMsg, 'bad', `<b class="bad">Table full.</b> Could not place “${esc(name)}” after ${r.kicks} kicks. Real systems resize or rebuild.`);
+  else if (r.kicks) say(cMsg, 'warn', `<b class="warn">Kick-out!</b> Both buckets of “${esc(name)}” were full, so ${r.kicks} item${r.kicks > 1 ? 's were' : ' was'} moved to ${r.kicks > 1 ? 'their' : 'its'} other bucket.`);
+  else say(cMsg, '', `Added “${esc(name)}” → fingerprint <b>${F.hex(r.fp)}</b> in bucket ${r.i1} or ${r.i2}.`);
+  cuckooDraw([r.i1, r.i2], r.moved, r.steps);
+}
+function cuckooOp(op) {
+  const name = cName.value.trim().toLowerCase();
+  if (op === 'reset') { cuckoo = F.createCuckoo(); say(cMsg, '', 'Empty again.'); cuckooDraw(); return; }
+  if (op === 'fill') {
+    const next = PRESETS.filter(p => !cuckoo.added.has(p)).slice(0, 4);
+    if (!next.length) { say(cMsg, '', 'All example names are in. Type your own.'); return; }
+    let i = 0;
+    const tick = () => { cName.value = next[i]; cuckooAddShow(next[i]); if (++i < next.length) setTimeout(tick, 650); };
+    tick();
+    return;
+  }
+  if (!name) { say(cMsg, '', 'Type a name first.'); cName.focus(); return; }
+  if (op === 'add') { cuckooAddShow(name); cName.select(); }
+  else if (op === 'check') {
+    const r = F.cuckooCheck(cuckoo, name);
+    if (r.result === 'no') say(cMsg, 'good', `<b class="good">Definitely NOT.</b> Fingerprint ${F.hex(r.fp)} is in neither bucket ${r.i1} nor bucket ${r.i2}.`);
+    else if (r.falsePositive) say(cMsg, 'bad', `<b class="bad">False positive!</b> “${esc(name)}” was never added, but another name with the same fingerprint ${F.hex(r.fp)} sits in bucket ${r.i1} or ${r.i2}. The DB check catches it.`);
+    else say(cMsg, 'warn', `<b class="warn">Maybe.</b> Fingerprint ${F.hex(r.fp)} found in bucket ${r.i1} or ${r.i2}. Confirm in the DB.`);
+    cuckooDraw([r.i1, r.i2]);
+  } else if (op === 'delete') {
+    const r = F.cuckooDelete(cuckoo, name);
+    if (r.ok) say(cMsg, 'good', `<b class="good">Deleted.</b> Removed fingerprint ${F.hex(r.fp)} from bucket ${r.from}. Unlike Bloom, nothing else is touched.`);
+    else say(cMsg, 'bad', `<b class="bad">Not deleted.</b> “${esc(name)}” was never added. Deleting it could remove someone else's matching fingerprint, so only delete what you added.`);
+    cuckooDraw([r.i1, r.i2]);
+  }
+}
+cuckooDraw();
+</script>
+</body>
+</html>
